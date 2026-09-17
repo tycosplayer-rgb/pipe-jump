@@ -20,7 +20,6 @@ html, body {
   touch-action: manipulation;
 }
 
-/* Full-viewport shell — no top chrome taking height */
 #game-wrap {
   width: 100%;
   height: 100dvh;
@@ -39,7 +38,6 @@ html, body {
 
 #stage {
   position: relative;
-  /* Fill viewport while keeping 800:480 */
   width: min(
     100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px),
     calc((100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) * 800 / 480)
@@ -70,7 +68,7 @@ html, body {
   user-select: none;
 }
 
-/* ---------- Rotate hint: fixed overlay, zero layout height ---------- */
+/* Rotate hint: fixed overlay */
 #rotate-hint {
   display: none;
   position: fixed;
@@ -78,9 +76,6 @@ html, body {
   left: 50%;
   transform: translateX(-50%);
   z-index: 20;
-  width: auto;
-  max-width: calc(100vw - 24px);
-  margin: 0;
   pointer-events: none;
 }
 
@@ -101,7 +96,6 @@ html, body {
 
 .rotate-icon {
   font-size: 1.1rem;
-  line-height: 1;
   animation: spin-hint 2.4s linear infinite;
   display: inline-block;
 }
@@ -113,18 +107,13 @@ html, body {
 }
 
 @media (orientation: portrait) and (max-width: 900px) {
-  #rotate-hint {
-    display: block;
-  }
+  #rotate-hint { display: block; }
 }
-
 @media (orientation: landscape), (min-width: 901px) {
-  #rotate-hint {
-    display: none !important;
-  }
+  #rotate-hint { display: none !important; }
 }
 
-/* ---------- On-screen touch controls ---------- */
+/* ---------- Touch layer ---------- */
 #touch-controls {
   display: none;
   position: absolute;
@@ -133,32 +122,37 @@ html, body {
   z-index: 5;
 }
 
-.touch-cluster {
+@media (hover: none), (pointer: coarse), (max-width: 900px) {
+  #touch-controls { display: block; }
+}
+
+/* Invisible right-half jump hit area */
+.jump-zone {
   position: absolute;
-  bottom: max(8px, env(safe-area-inset-bottom, 0px));
-  display: flex;
-  gap: 12px;
+  top: 0;
+  right: 0;
+  width: 50%;
+  height: 100%;
   pointer-events: auto;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  background: transparent;
+  z-index: 1;
 }
 
-.touch-move {
-  left: max(8px, env(safe-area-inset-left, 0px));
-}
-
-.touch-action {
+/* Pause — top right */
+.touch-pause {
+  position: absolute;
+  top: max(8px, env(safe-area-inset-top, 0px));
   right: max(8px, env(safe-area-inset-right, 0px));
-  flex-direction: column;
-  align-items: flex-end;
-}
-
-.touch-btn {
-  width: clamp(48px, 9vh, 64px);
-  height: clamp(48px, 9vh, 64px);
-  border: 2px solid rgba(255, 255, 255, 0.45);
-  border-radius: 14px;
-  background: rgba(20, 24, 40, 0.42);
+  z-index: 6;
+  width: clamp(40px, 7.5vh, 48px);
+  height: clamp(40px, 7.5vh, 48px);
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  border-radius: 12px;
+  background: rgba(20, 24, 40, 0.45);
   color: #fff;
-  font-size: clamp(1.05rem, 3.2vh, 1.35rem);
+  font-size: 0.95rem;
   font-weight: 700;
   font-family: inherit;
   line-height: 1;
@@ -172,73 +166,78 @@ html, body {
   -webkit-tap-highlight-color: transparent;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
   backdrop-filter: blur(2px);
-}
-
-.touch-btn:active,
-.touch-btn.is-active {
-  background: rgba(255, 217, 61, 0.45);
-  border-color: #ffd93d;
-  transform: scale(0.96);
-}
-
-.touch-jump {
-  width: clamp(60px, 12vh, 80px);
-  height: clamp(60px, 12vh, 80px);
-  border-radius: 50%;
-  font-size: clamp(1.2rem, 3.6vh, 1.5rem);
-  background: rgba(39, 174, 96, 0.45);
-  border-color: rgba(46, 204, 113, 0.75);
-}
-
-.touch-jump:active,
-.touch-jump.is-active {
-  background: rgba(46, 204, 113, 0.7);
-}
-
-.touch-pause {
-  width: clamp(40px, 7vh, 48px);
-  height: clamp(40px, 7vh, 48px);
-  font-size: 0.9rem;
-  border-radius: 12px;
   opacity: 0.9;
 }
 
-@media (hover: none), (pointer: coarse), (max-width: 900px) {
-  #touch-controls {
-    display: block;
-  }
+.touch-pause:active,
+.touch-pause.is-active {
+  background: rgba(255, 217, 61, 0.45);
+  border-color: #ffd93d;
+}
+
+/* Virtual joystick — bottom left */
+.joystick {
+  position: absolute;
+  left: max(12px, env(safe-area-inset-left, 0px));
+  bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  width: clamp(96px, 22vh, 130px);
+  height: clamp(96px, 22vh, 130px);
+  z-index: 4;
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.joystick-base {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(20, 24, 40, 0.32);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.2);
+}
+
+.joystick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 42%;
+  height: 42%;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.38);
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  will-change: transform;
+}
+
+.joystick.is-active .joystick-base {
+  border-color: rgba(255, 217, 61, 0.55);
+  background: rgba(20, 24, 40, 0.4);
+}
+
+.joystick.is-active .joystick-knob {
+  background: rgba(255, 217, 61, 0.55);
+  border-color: #ffd93d;
 }
 
 @media (orientation: landscape) and (max-height: 400px) {
-  .touch-btn {
-    width: 46px;
-    height: 46px;
-  }
-  .touch-jump {
-    width: 58px;
-    height: 58px;
+  .joystick {
+    width: 84px;
+    height: 84px;
+    left: max(8px, env(safe-area-inset-left, 0px));
+    bottom: max(8px, env(safe-area-inset-bottom, 0px));
   }
   .touch-pause {
-    width: 38px;
-    height: 38px;
-  }
-  .touch-cluster {
-    gap: 8px;
-  }
-}
-
-@media (orientation: portrait) and (max-width: 900px) {
-  .touch-btn {
-    width: 56px;
-    height: 56px;
-  }
-  .touch-jump {
-    width: 70px;
-    height: 70px;
+    width: 36px;
+    height: 36px;
+    top: max(6px, env(safe-area-inset-top, 0px));
+    right: max(6px, env(safe-area-inset-right, 0px));
   }
 }
 
-/* Desktop: slight max so it doesn’t look stretched on ultrawide */
 @media (min-width: 1100px) and (hover: hover) and (pointer: fine) {
   #stage {
     width: min(960px, calc(100dvh * 800 / 480));

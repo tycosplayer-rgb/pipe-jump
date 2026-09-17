@@ -85,85 +85,195 @@
     }
   }
 
-  // ---------- Touch / pointer on-screen controls ----------
+  // ---------- Touch: joystick + right-half jump + top-right pause ----------
   (function setupTouchControls() {
     const root = document.getElementById("touch-controls");
-    if (!root) return;
+    const stage = document.getElementById("stage") || canvas;
+    const joy = document.getElementById("joystick");
+    const knob = document.getElementById("joystick-knob");
+    const pauseBtn = document.getElementById("btn-pause");
+    const jumpZone = document.getElementById("jump-zone");
+    if (!root || !stage) return;
 
-    const activePointers = new Map(); // pointerId -> key id
+    const DEADZONE = 0.22;
+    let joyPointerId = null;
+    let joyOriginX = 0;
+    let joyOriginY = 0;
+    let joyRadius = 50;
+    const jumpPointers = new Set();
 
-    function bindButton(btn) {
-      const keyId = btn.getAttribute("data-key");
-      if (!keyId) return;
+    function blockTouch(el) {
+      if (!el) return;
+      el.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
+      el.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
+    }
+    blockTouch(stage);
+    blockTouch(canvas);
+    blockTouch(joy);
+    blockTouch(pauseBtn);
+    blockTouch(jumpZone);
 
+    function applyJoyAxis(nx) {
+      if (nx < -DEADZONE) {
+        setVirtualKey("left", true);
+        setVirtualKey("right", false);
+      } else if (nx > DEADZONE) {
+        setVirtualKey("right", true);
+        setVirtualKey("left", false);
+      } else {
+        setVirtualKey("left", false);
+        setVirtualKey("right", false);
+      }
+    }
+
+    function setKnob(dx, dy) {
+      if (!knob) return;
+      knob.style.transform = "translate(calc(-50% + " + dx + "px), calc(-50% + " + dy + "px))";
+    }
+
+    function resetJoyVisual() {
+      setKnob(0, 0);
+      if (joy) joy.classList.remove("is-active");
+    }
+
+    function endJoy(pointerId) {
+      if (joyPointerId !== pointerId && joyPointerId != null) return;
+      joyPointerId = null;
+      applyJoyAxis(0);
+      resetJoyVisual();
+    }
+
+    function updateJoyFromEvent(e) {
+      const dx0 = e.clientX - joyOriginX;
+      const dy0 = e.clientY - joyOriginY;
+      // Horizontal drive only; clamp to circle for visuals
+      const dist = Math.hypot(dx0, dy0);
+      const maxR = joyRadius;
+      let dx = dx0;
+      let dy = dy0;
+      if (dist > maxR && dist > 0) {
+        dx = (dx0 / dist) * maxR;
+        dy = (dy0 / dist) * maxR;
+      }
+      setKnob(dx, dy);
+      applyJoyAxis(dx / maxR);
+    }
+
+    function startJoy(e) {
+      if (joyPointerId != null) return;
+      e.preventDefault();
+      e.stopPropagation();
+      unlockAudio();
+      const rect = joy.getBoundingClientRect();
+      joyRadius = Math.min(rect.width, rect.height) * 0.42;
+      joyOriginX = rect.left + rect.width / 2;
+      joyOriginY = rect.top + rect.height / 2;
+      joyPointerId = e.pointerId;
+      joy.classList.add("is-active");
+      try { joy.setPointerCapture(e.pointerId); } catch (_) {}
+      updateJoyFromEvent(e);
+    }
+
+    if (joy) {
+      joy.addEventListener("pointerdown", startJoy);
+      joy.addEventListener("pointermove", (e) => {
+        if (e.pointerId !== joyPointerId) return;
+        e.preventDefault();
+        updateJoyFromEvent(e);
+      });
+      const joyUp = (e) => {
+        if (e.pointerId !== joyPointerId) return;
+        e.preventDefault();
+        endJoy(e.pointerId);
+        try { joy.releasePointerCapture(e.pointerId); } catch (_) {}
+      };
+      joy.addEventListener("pointerup", joyUp);
+      joy.addEventListener("pointercancel", joyUp);
+      joy.addEventListener("lostpointercapture", (e) => endJoy(e.pointerId));
+    }
+
+    // Pause button (top-right)
+    if (pauseBtn) {
       const down = (e) => {
         e.preventDefault();
         e.stopPropagation();
         unlockAudio();
-        activePointers.set(e.pointerId, keyId);
-        setVirtualKey(keyId, true);
-        btn.classList.add("is-active");
-        try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+        setVirtualKey("p", true);
+        pauseBtn.classList.add("is-active");
+        try { pauseBtn.setPointerCapture(e.pointerId); } catch (_) {}
       };
       const up = (e) => {
         e.preventDefault();
         e.stopPropagation();
-        const id = activePointers.get(e.pointerId) || keyId;
-        activePointers.delete(e.pointerId);
-        // Only release if no other pointer still holding same key
-        let still = false;
-        for (const v of activePointers.values()) {
-          if (v === id) { still = true; break; }
-        }
-        if (!still) {
-          setVirtualKey(id, false);
-          btn.classList.remove("is-active");
-        }
-        try { btn.releasePointerCapture(e.pointerId); } catch (_) {}
+        setVirtualKey("p", false);
+        pauseBtn.classList.remove("is-active");
+        try { pauseBtn.releasePointerCapture(e.pointerId); } catch (_) {}
       };
-
-      btn.addEventListener("pointerdown", down);
-      btn.addEventListener("pointerup", up);
-      btn.addEventListener("pointercancel", up);
-      btn.addEventListener("lostpointercapture", (e) => {
-        const id = activePointers.get(e.pointerId);
-        if (!id) return;
-        activePointers.delete(e.pointerId);
-        let still = false;
-        for (const v of activePointers.values()) {
-          if (v === id) { still = true; break; }
-        }
-        if (!still) {
-          setVirtualKey(id, false);
-          btn.classList.remove("is-active");
-        }
-      });
-
-      // Block legacy touch scroll on buttons
-      btn.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
-      btn.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
+      pauseBtn.addEventListener("pointerdown", down);
+      pauseBtn.addEventListener("pointerup", up);
+      pauseBtn.addEventListener("pointercancel", up);
     }
 
-    root.querySelectorAll(".touch-btn").forEach(bindButton);
+    function releaseJump(pointerId) {
+      if (!jumpPointers.has(pointerId)) return;
+      jumpPointers.delete(pointerId);
+      if (jumpPointers.size === 0) setVirtualKey("space", false);
+    }
 
-    // Prevent canvas page scroll / pinch zoom gestures
-    const stage = document.getElementById("stage") || canvas;
-    const block = (e) => { e.preventDefault(); };
-    stage.addEventListener("touchstart", block, { passive: false });
-    stage.addEventListener("touchmove", block, { passive: false });
-    canvas.addEventListener("touchstart", block, { passive: false });
-    canvas.addEventListener("touchmove", block, { passive: false });
-
-    // Tap canvas to start / continue / retry (menus)
-    canvas.addEventListener("pointerdown", (e) => {
-      if (e.pointerType === "mouse" && e.button !== 0) return;
+    function beginJump(e) {
+      e.preventDefault();
+      e.stopPropagation();
       unlockAudio();
-      // Only inject menu confirm when not already using a touch button
+      // Menus: tap confirms; playing: hold = variable jump
       if (state === STATE.START || state === STATE.WIN || state === STATE.OVER || state === STATE.PAUSE) {
         setVirtualKey("space", true);
-        // Release next frame so it acts as a tap
         requestAnimationFrame(() => setVirtualKey("space", false));
+        return;
       }
+      if (!jumpPointers.has(e.pointerId)) {
+        jumpPointers.add(e.pointerId);
+        setVirtualKey("space", true);
+      }
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch (_) {}
+    }
+
+    function endJump(e) {
+      e.preventDefault();
+      releaseJump(e.pointerId);
+      try { e.currentTarget.releasePointerCapture(e.pointerId); } catch (_) {}
+    }
+
+    // Prefer dedicated jump zone (right half); also accept canvas right-half
+    const jumpTargets = [jumpZone, canvas].filter(Boolean);
+    for (const el of jumpTargets) {
+      el.addEventListener("pointerdown", (e) => {
+        if (e.pointerType === "mouse" && e.button !== 0) return;
+        // If event is on canvas, only right half
+        if (el === canvas) {
+          const rect = stage.getBoundingClientRect();
+          if (e.clientX < rect.left + rect.width * 0.5) {
+            // Left half of canvas: menus still allow confirm
+            if (state === STATE.START || state === STATE.WIN || state === STATE.OVER || state === STATE.PAUSE) {
+              unlockAudio();
+              setVirtualKey("space", true);
+              requestAnimationFrame(() => setVirtualKey("space", false));
+            }
+            return;
+          }
+        }
+        beginJump(e);
+      });
+      el.addEventListener("pointerup", endJump);
+      el.addEventListener("pointercancel", endJump);
+      el.addEventListener("lostpointercapture", (e) => releaseJump(e.pointerId));
+    }
+
+    window.addEventListener("blur", () => {
+      endJoy(joyPointerId);
+      jumpPointers.clear();
+      setVirtualKey("space", false);
+      setVirtualKey("left", false);
+      setVirtualKey("right", false);
     });
   })();
 
@@ -834,9 +944,9 @@
     drawWorld();
     drawHUD();
 
-    if (state === STATE.PAUSE) drawOverlay("暂停", "按 P / Esc / 空格 / 点「跳」继续");
-    if (state === STATE.WIN) drawOverlay("过关成功！", `得分 ${score}　按空格或点「跳」再玩`);
-    if (state === STATE.OVER) drawOverlay("游戏结束", `得分 ${score}　按空格或点「跳」重开`);
+    if (state === STATE.PAUSE) drawOverlay("暂停", "按 P / Esc / 空格 / 点右半屏 继续");
+    if (state === STATE.WIN) drawOverlay("过关成功！", `得分 ${score}　按空格或点右半屏再玩`);
+    if (state === STATE.OVER) drawOverlay("游戏结束", `得分 ${score}　按空格或点右半屏重开`);
   }
 
   function drawStart() {
@@ -875,12 +985,12 @@
     ctx.fillStyle = "#fff";
     ctx.font = "18px sans-serif";
     const blink = Math.floor(Date.now() / 400) % 2 === 0;
-    if (blink) ctx.fillText("按 空格 / 点击 / 点「跳」开始", W / 2, 280);
+    if (blink) ctx.fillText("按 空格 / 点右半屏 开始", W / 2, 280);
 
     ctx.font = "13px sans-serif";
     ctx.fillStyle = "#bdc3c7";
     ctx.fillText("收集金币 · 踩扁怪物 · 抵达终点旗帜", W / 2, 360);
-    ctx.fillText("键盘或屏幕按钮均可操作", W / 2, 385);
+    ctx.fillText("左摇杆移动 · 点右半屏跳跃 · 右上暂停", W / 2, 385);
   }
 
   function drawWorld() {
