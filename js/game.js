@@ -50,9 +50,15 @@
   window.addEventListener("keyup", (e) => {
     keys[normalizeKey(e)] = false;
   });
-  window.addEventListener("blur", () => {
-    for (const k of Object.keys(keys)) keys[k] = false;
+  function nukeTouchAndKeys() {
+    if (typeof window.__pipeJumpForceEndTouch === "function") window.__pipeJumpForceEndTouch();
+    clearAllInput();
+  }
+  window.addEventListener("blur", () => nukeTouchAndKeys());
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") nukeTouchAndKeys();
   });
+  window.addEventListener("pagehide", () => nukeTouchAndKeys());
 
   function normalizeKey(e) {
     if (e.code === "Space" || e.key === " ") return "space";
@@ -65,8 +71,11 @@
     return k;
   }
 
+  // Keyboard + virtual touch share held(); virt is touch-only and can be force-cleared
+  const virt = Object.create(null);
+
   function held(id) {
-    return !!keys[id];
+    return !!keys[id] || !!virt[id];
   }
   function pressed(id) {
     return !!justPressed[id];
@@ -78,19 +87,40 @@
   function setVirtualKey(id, down) {
     if (!id) return;
     if (down) {
-      if (!keys[id]) justPressed[id] = true;
-      keys[id] = true;
+      if (!virt[id]) justPressed[id] = true;
+      virt[id] = true;
     } else {
-      keys[id] = false;
+      virt[id] = false;
     }
   }
 
-  // ---------- Touch: outside gutters (left joystick / right jump / pause) ----------
+  function clearVirtualControls() {
+    virt.left = false;
+    virt.right = false;
+    virt.space = false;
+  }
+
+  function clearAllInput() {
+    for (const k of Object.keys(keys)) keys[k] = false;
+    clearVirtualControls();
+    for (const k of Object.keys(justPressed)) justPressed[k] = false;
+    pauseToggleQueued = false;
+  }
+
+  let pauseToggleQueued = false;
+  function queuePauseToggle() {
+    pauseToggleQueued = true;
+  }
+  function consumePauseToggle() {
+    if (!pauseToggleQueued) return false;
+    pauseToggleQueued = false;
+    return true;
+  }
+
+  // ---------- Touch: outside gutters (hardened) ----------
   (function setupTouchControls() {
     const wrap = document.getElementById("game-wrap");
     const stage = document.getElementById("stage") || canvas;
-    const railLeft = document.getElementById("rail-left");
-    const railRight = document.getElementById("rail-right");
     const joy = document.getElementById("joystick");
     const knob = document.getElementById("joystick-knob");
     const pauseBtn = document.getElementById("btn-pause");
@@ -109,7 +139,7 @@
       el.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
       el.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
     }
-    [wrap, stage, canvas, railLeft, railRight, joy, pauseBtn, jumpZone].forEach(blockTouch);
+    [wrap, stage, canvas, joy, pauseBtn, jumpZone].forEach(blockTouch);
 
     function applyJoyAxis(nx) {
       if (nx < -DEADZONE) {
@@ -135,20 +165,29 @@
     }
 
     function endJoy(pointerId) {
-      if (joyPointerId != null && pointerId != null && joyPointerId !== pointerId) return;
+      if (pointerId != null && joyPointerId != null && pointerId !== joyPointerId) return;
       joyPointerId = null;
       applyJoyAxis(0);
       resetJoyVisual();
     }
 
+    function forceEndAllTouch() {
+      joyPointerId = null;
+      jumpPointers.clear();
+      applyJoyAxis(0);
+      resetJoyVisual();
+      clearVirtualControls();
+      if (pauseBtn) pauseBtn.classList.remove("is-active");
+    }
+
     function updateJoyFromEvent(e) {
       const dx0 = e.clientX - joyOriginX;
       const dy0 = e.clientY - joyOriginY;
-      const dist = Math.hypot(dx0, dy0);
-      const maxR = joyRadius;
+      const dist = Math.hypot(dx0, dy0) || 0;
+      const maxR = Math.max(1, joyRadius);
       let dx = dx0;
       let dy = dy0;
-      if (dist > maxR && dist > 0) {
+      if (dist > maxR) {
         dx = (dx0 / dist) * maxR;
         dy = (dy0 / dist) * maxR;
       }
@@ -158,6 +197,7 @@
 
     function startJoy(e) {
       if (!joy) return;
+      if (e.pointerType === "mouse" && e.button !== 0) return;
       if (joyPointerId != null) return;
       e.preventDefault();
       e.stopPropagation();
@@ -168,125 +208,85 @@
       joyOriginY = rect.top + rect.height / 2;
       joyPointerId = e.pointerId;
       joy.classList.add("is-active");
-      try { joy.setPointerCapture(e.pointerId); } catch (_) {}
       updateJoyFromEvent(e);
     }
 
-    // Joystick + entire left rail (outside canvas)
-    const joyStarts = [joy, railLeft].filter(Boolean);
-    for (const el of joyStarts) {
-      el.addEventListener("pointerdown", startJoy);
-    }
-    if (joy) {
-      joy.addEventListener("pointermove", (e) => {
-        if (e.pointerId !== joyPointerId) return;
-        e.preventDefault();
-        updateJoyFromEvent(e);
-      });
-      const joyUp = (e) => {
-        if (e.pointerId !== joyPointerId) return;
-        e.preventDefault();
-        endJoy(e.pointerId);
-        try { joy.releasePointerCapture(e.pointerId); } catch (_) {}
-      };
-      joy.addEventListener("pointerup", joyUp);
-      joy.addEventListener("pointercancel", joyUp);
-      joy.addEventListener("lostpointercapture", (e) => endJoy(e.pointerId));
-      // Track move/up on window while captured
-      window.addEventListener("pointermove", (e) => {
-        if (e.pointerId !== joyPointerId) return;
-        updateJoyFromEvent(e);
-      });
-      window.addEventListener("pointerup", (e) => {
-        if (e.pointerId !== joyPointerId) return;
-        endJoy(e.pointerId);
-      });
-      window.addEventListener("pointercancel", (e) => {
-        if (e.pointerId !== joyPointerId) return;
-        endJoy(e.pointerId);
-      });
-    }
-
-    // Pause (top of right rail — outside playfield)
-    if (pauseBtn) {
-      const down = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        unlockAudio();
-        setVirtualKey("p", true);
-        pauseBtn.classList.add("is-active");
-        try { pauseBtn.setPointerCapture(e.pointerId); } catch (_) {}
-      };
-      const up = (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setVirtualKey("p", false);
-        pauseBtn.classList.remove("is-active");
-        try { pauseBtn.releasePointerCapture(e.pointerId); } catch (_) {}
-      };
-      pauseBtn.addEventListener("pointerdown", down);
-      pauseBtn.addEventListener("pointerup", up);
-      pauseBtn.addEventListener("pointercancel", up);
-    }
+    // Bind ONLY joystick (not railLeft) to avoid double pointerdown
+    if (joy) joy.addEventListener("pointerdown", startJoy);
 
     function releaseJump(pointerId) {
+      if (pointerId == null) {
+        jumpPointers.clear();
+        setVirtualKey("space", false);
+        return;
+      }
       if (!jumpPointers.has(pointerId)) return;
       jumpPointers.delete(pointerId);
       if (jumpPointers.size === 0) setVirtualKey("space", false);
     }
 
     function beginJump(e) {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
       unlockAudio();
       if (state === STATE.START || state === STATE.WIN || state === STATE.OVER || state === STATE.PAUSE) {
-        setVirtualKey("space", true);
-        requestAnimationFrame(() => setVirtualKey("space", false));
+        justPressed.space = true;
         return;
       }
+      if (state !== STATE.PLAY) return;
       if (!jumpPointers.has(e.pointerId)) {
         jumpPointers.add(e.pointerId);
         setVirtualKey("space", true);
       }
-      try { (jumpZone || railRight).setPointerCapture(e.pointerId); } catch (_) {}
     }
 
-    function endJump(e) {
-      e.preventDefault();
-      releaseJump(e.pointerId);
-      try { (e.currentTarget || jumpZone).releasePointerCapture(e.pointerId); } catch (_) {}
-    }
+    // Bind ONLY jump-zone (sized below pause in CSS)
+    if (jumpZone) jumpZone.addEventListener("pointerdown", beginJump);
 
-    // Jump: right gutter outside canvas (primary). No overlay on playfield art.
-    const jumpEls = [jumpZone, railRight].filter(Boolean);
-    for (const el of jumpEls) {
-      el.addEventListener("pointerdown", (e) => {
+    if (pauseBtn) {
+      pauseBtn.addEventListener("pointerdown", (e) => {
         if (e.pointerType === "mouse" && e.button !== 0) return;
-        if (e.target === pauseBtn || (pauseBtn && pauseBtn.contains(e.target))) return;
-        beginJump(e);
+        e.preventDefault();
+        e.stopPropagation();
+        unlockAudio();
+        pauseBtn.classList.add("is-active");
+        queuePauseToggle();
       });
-      el.addEventListener("pointerup", endJump);
-      el.addEventListener("pointercancel", endJump);
-      el.addEventListener("lostpointercapture", (e) => releaseJump(e.pointerId));
+      const clearPauseVisual = (e) => {
+        e.preventDefault();
+        pauseBtn.classList.remove("is-active");
+      };
+      pauseBtn.addEventListener("pointerup", clearPauseVisual);
+      pauseBtn.addEventListener("pointercancel", clearPauseVisual);
     }
 
-    // Canvas: menus only (no jump overlay on playfield)
+    // Canvas: menus only — never stick space during PLAY
     canvas.addEventListener("pointerdown", (e) => {
       if (e.pointerType === "mouse" && e.button !== 0) return;
       unlockAudio();
       if (state === STATE.START || state === STATE.WIN || state === STATE.OVER || state === STATE.PAUSE) {
-        setVirtualKey("space", true);
-        requestAnimationFrame(() => setVirtualKey("space", false));
+        justPressed.space = true;
       }
     });
 
-    window.addEventListener("blur", () => {
-      endJoy(joyPointerId);
-      jumpPointers.clear();
-      setVirtualKey("space", false);
-      setVirtualKey("left", false);
-      setVirtualKey("right", false);
-    });
+    window.addEventListener("pointermove", (e) => {
+      if (e.pointerId === joyPointerId) {
+        e.preventDefault();
+        updateJoyFromEvent(e);
+      }
+    }, { passive: false });
+
+    function onPointerEnd(e) {
+      if (e.pointerId === joyPointerId) endJoy(e.pointerId);
+      releaseJump(e.pointerId);
+      if (pauseBtn) pauseBtn.classList.remove("is-active");
+    }
+    window.addEventListener("pointerup", onPointerEnd);
+    window.addEventListener("pointercancel", onPointerEnd);
+
+    // Expose for page lifecycle handlers
+    window.__pipeJumpForceEndTouch = forceEndAllTouch;
   })();
 
   // ---------- Audio (low-latency Web Audio) ----------
@@ -694,7 +694,7 @@
     frame++;
 
     // Pause
-    if (pressed("p") || pressed("esc")) {
+    if (pressed("p") || pressed("esc") || consumePauseToggle()) {
       state = STATE.PAUSE;
       SFX.pause();
       return;
@@ -924,7 +924,7 @@
   }
 
   function updatePause() {
-    if (pressed("p") || pressed("esc") || pressed("space") || pressed("enter")) {
+    if (pressed("p") || pressed("esc") || pressed("space") || pressed("enter") || consumePauseToggle()) {
       state = STATE.PLAY;
       SFX.pause();
     }

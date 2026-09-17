@@ -17,44 +17,49 @@ html, body {
   touch-action: manipulation;
 }
 
-/* Desktop default: centered stage, no side rails */
+/* Desktop: centered stage, rails hidden */
 #game-wrap {
   width: 100%;
   height: 100dvh;
   min-height: 100dvh;
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
   align-items: center;
-  justify-content: center;
+  justify-items: center;
   padding:
     max(0px, env(safe-area-inset-top, 0px))
     max(0px, env(safe-area-inset-right, 0px))
     max(0px, env(safe-area-inset-bottom, 0px))
     max(0px, env(safe-area-inset-left, 0px));
-  gap: 0;
+  overflow: hidden;
 }
 
 .control-rail {
   display: none;
   position: relative;
-  flex: 0 0 auto;
   height: 100%;
+  min-height: 0;
   touch-action: none;
   -webkit-user-select: none;
   user-select: none;
+  overflow: hidden;
 }
 
 #stage {
   position: relative;
-  flex: 0 1 auto;
   width: min(
-    100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px),
+    100%,
     calc((100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) * 800 / 480)
   );
+  max-width: 100%;
   max-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   aspect-ratio: 800 / 480;
   touch-action: none;
   -webkit-user-select: none;
   user-select: none;
+  min-width: 0;
+  min-height: 0;
 }
 
 #game {
@@ -116,14 +121,14 @@ html, body {
   #rotate-hint { display: none !important; }
 }
 
-/* Joystick inside left rail */
+/* Joystick in left rail */
 .joystick {
   position: absolute;
   left: 50%;
   bottom: max(16px, env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
-  width: min(92%, clamp(88px, 20vh, 120px));
-  height: min(92%, clamp(88px, 20vh, 120px));
+  width: min(92%, clamp(80px, 18vh, 112px));
+  height: min(92%, clamp(80px, 18vh, 112px));
   aspect-ratio: 1;
   z-index: 2;
   pointer-events: auto;
@@ -164,18 +169,7 @@ html, body {
   border-color: #ffd93d;
 }
 
-/* Right rail: full-area jump (no overlay on canvas) */
-.jump-zone {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  pointer-events: auto;
-  touch-action: none;
-  -webkit-tap-highlight-color: transparent;
-  background: transparent;
-}
-
-/* Pause in right rail top */
+/* Pause at top of right rail */
 .touch-pause {
   position: absolute;
   top: max(8px, env(safe-area-inset-top, 0px));
@@ -206,79 +200,113 @@ html, body {
   border-color: #ffd93d;
 }
 
+/* Jump zone: right rail BELOW pause — does not cover pause */
+.jump-zone {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: calc(max(8px, env(safe-area-inset-top, 0px)) + clamp(40px, 8vh, 48px) + 10px);
+  z-index: 1;
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.jump-zone::after {
+  content: "跳";
+  font-size: clamp(1.1rem, 3.5vh, 1.6rem);
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.18);
+  letter-spacing: 0.15em;
+  pointer-events: none;
+  user-select: none;
+}
+
 /*
- * Touch / mobile: side gutters outside the canvas.
- * Shrink playfield so left/right rails stay ≥ ~88px / ~72px.
+ * Touch / mobile: rails ALWAYS on-screen via grid.
+ * Columns: left rail | canvas (1fr, shrinks) | right rail
  */
 @media (hover: none), (pointer: coarse), (max-width: 900px) {
   #game-wrap {
-    justify-content: stretch;
+    grid-template-columns:
+      minmax(88px, 16vw)
+      minmax(0, 1fr)
+      minmax(72px, 14vw);
+    grid-template-rows: 1fr;
     align-items: stretch;
+    justify-items: stretch;
   }
 
   .control-rail {
     display: block;
+    width: 100%;
+    height: 100%;
   }
 
   #rail-left {
-    width: max(88px, min(18vw, 140px));
-    min-width: 88px;
-    /* subtle gutter so controls read as “outside” */
-    background: linear-gradient(90deg, rgba(0, 0, 0, 0.25), rgba(0, 0, 0, 0.05));
+    grid-column: 1;
+    background: linear-gradient(90deg, rgba(0, 0, 0, 0.28), rgba(0, 0, 0, 0.06));
   }
 
   #rail-right {
-    width: max(72px, min(16vw, 120px));
-    min-width: 72px;
-    background: linear-gradient(270deg, rgba(0, 0, 0, 0.25), rgba(0, 0, 0, 0.05));
+    grid-column: 3;
+    background: linear-gradient(270deg, rgba(0, 0, 0, 0.28), rgba(0, 0, 0, 0.06));
   }
 
   #stage {
-    flex: 1 1 auto;
-    width: auto;
-    max-width: none;
-    height: auto;
-    max-height: 100%;
+    grid-column: 2;
+    justify-self: center;
     align-self: center;
-    /* Fit remaining width AND full height */
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: 100%;
+    /* Fit inside the middle column + full row height */
     width: min(
-      calc(100% - 0px),
+      100%,
       calc(100dvh * 800 / 480)
     );
-    /* flex item: constrain by parent height */
-    max-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
     height: min(
-      calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)),
-      calc((100vw - max(88px, min(18vw, 140px)) - max(72px, min(16vw, 120px)) - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)) * 480 / 800)
+      100%,
+      calc(100% * 1)
     );
-    width: calc(min(
-      calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)),
-      calc((100vw - max(88px, min(18vw, 140px)) - max(72px, min(16vw, 120px)) - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)) * 480 / 800)
-    ) * 800 / 480);
+    max-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    aspect-ratio: 800 / 480;
+    /* Prefer height-constrained when column is wide */
+    max-width: min(100%, calc((100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) * 800 / 480));
   }
 }
 
 @media (orientation: landscape) and (max-height: 400px) {
-  #rail-left { width: max(80px, 16vw); min-width: 80px; }
-  #rail-right { width: max(64px, 14vw); min-width: 64px; }
+  #game-wrap {
+    grid-template-columns: minmax(72px, 14vw) minmax(0, 1fr) minmax(60px, 12vw);
+  }
   .joystick {
-    width: 72px;
-    height: 72px;
+    width: 64px;
+    height: 64px;
     bottom: max(8px, env(safe-area-inset-bottom, 0px));
   }
   .touch-pause {
-    width: 36px;
-    height: 36px;
+    width: 34px;
+    height: 34px;
+  }
+  .jump-zone {
+    top: calc(max(6px, env(safe-area-inset-top, 0px)) + 34px + 8px);
   }
 }
 
-/* Portrait touch: still use side rails (narrower playfield) */
 @media (orientation: portrait) and (max-width: 900px) {
-  #rail-left { width: max(72px, 16vw); min-width: 72px; }
-  #rail-right { width: max(64px, 14vw); min-width: 64px; }
+  #game-wrap {
+    grid-template-columns: minmax(72px, 15vw) minmax(0, 1fr) minmax(64px, 13vw);
+  }
   .joystick {
-    width: 70px;
-    height: 70px;
+    width: 64px;
+    height: 64px;
   }
 }
 
