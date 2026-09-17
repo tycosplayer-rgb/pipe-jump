@@ -12,51 +12,79 @@ html, body {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 100vh;
+  min-height: 100%;
+  min-height: 100dvh;
+  overflow: hidden;
+  /* Avoid pull-to-refresh / overscroll while playing */
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+  touch-action: manipulation;
 }
 
 #game-wrap {
   text-align: center;
-  padding: 12px;
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
+  width: 100%;
+  max-width: 960px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+#brand {
+  line-height: 1.2;
 }
 
 #title {
-  font-size: 1.75rem;
+  font-size: clamp(1.1rem, 4vw, 1.75rem);
   letter-spacing: 0.12em;
   color: #ffd93d;
   text-shadow: 2px 2px 0 #c0392b, 0 0 12px rgba(255, 217, 61, 0.35);
-  margin-bottom: 2px;
 }
 
 #subtitle {
-  font-size: 0.85rem;
+  font-size: clamp(0.7rem, 2.2vw, 0.85rem);
   color: #7f8c8d;
-  margin-bottom: 10px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
 }
 
+#stage {
+  position: relative;
+  width: 100%;
+  max-width: min(800px, 100%);
+  /* Keep 800:480 aspect */
+  aspect-ratio: 800 / 480;
+  margin: 0 auto;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 #game {
   display: block;
-  margin: 0 auto;
+  width: 100%;
+  height: 100%;
   background: #5c94fc;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
-  border: 4px solid #2c3e50;
+  border: 3px solid #2c3e50;
   border-radius: 4px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
-  max-width: 100%;
-  height: auto;
   cursor: none;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 #hints {
-  margin-top: 10px;
+  margin-top: 2px;
   display: flex;
   flex-wrap: wrap;
-  gap: 10px 18px;
+  gap: 8px 14px;
   justify-content: center;
-  font-size: 0.8rem;
+  font-size: clamp(0.68rem, 2vw, 0.8rem);
   color: #95a5a6;
 }
 
@@ -67,7 +95,169 @@ html, body {
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-@media (max-width: 840px) {
-  #title { font-size: 1.35rem; }
-  #hints { font-size: 0.72rem; }
+.hint-touch {
+  display: none;
+}
+
+/* ---------- On-screen touch controls ---------- */
+#touch-controls {
+  display: none;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.touch-cluster {
+  position: absolute;
+  bottom: max(10px, env(safe-area-inset-bottom, 0px));
+  display: flex;
+  gap: 12px;
+  pointer-events: auto;
+}
+
+.touch-move {
+  left: max(10px, env(safe-area-inset-left, 0px));
+}
+
+.touch-action {
+  right: max(10px, env(safe-area-inset-right, 0px));
+  align-items: flex-end;
+}
+
+.touch-btn {
+  width: 64px;
+  height: 64px;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-radius: 16px;
+  background: rgba(20, 24, 40, 0.42);
+  color: #fff;
+  font-size: 1.35rem;
+  font-weight: 700;
+  font-family: inherit;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(2px);
+}
+
+.touch-btn:active,
+.touch-btn.is-active {
+  background: rgba(255, 217, 61, 0.45);
+  border-color: #ffd93d;
+  transform: scale(0.96);
+}
+
+.touch-jump {
+  width: 78px;
+  height: 78px;
+  border-radius: 50%;
+  font-size: 1.45rem;
+  background: rgba(39, 174, 96, 0.45);
+  border-color: rgba(46, 204, 113, 0.75);
+}
+
+.touch-jump:active,
+.touch-jump.is-active {
+  background: rgba(46, 204, 113, 0.7);
+}
+
+.touch-pause {
+  width: 48px;
+  height: 48px;
+  font-size: 1rem;
+  border-radius: 12px;
+  margin-bottom: 6px;
+  opacity: 0.85;
+}
+
+/* Show touch UI on phones / tablets / coarse pointers */
+@media (hover: none), (pointer: coarse), (max-width: 900px) {
+  #touch-controls {
+    display: block;
+  }
+  .hint-touch {
+    display: inline-flex;
+  }
+}
+
+/* Compact phone layout: shrink chrome so playfield stays large */
+@media (max-width: 640px), (max-height: 520px) {
+  body {
+    align-items: stretch;
+  }
+
+  #game-wrap {
+    padding: 4px 4px calc(4px + env(safe-area-inset-bottom, 0px));
+    min-height: 100dvh;
+    justify-content: center;
+  }
+
+  #brand {
+    display: none;
+  }
+
+  #hints {
+    display: none;
+  }
+
+  #stage {
+    max-width: 100%;
+    max-height: calc(100dvh - 8px);
+    width: min(100%, calc((100dvh - 8px) * 800 / 480));
+  }
+
+  .touch-btn {
+    width: 58px;
+    height: 58px;
+    font-size: 1.2rem;
+  }
+
+  .touch-jump {
+    width: 72px;
+    height: 72px;
+  }
+
+  .touch-pause {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+@media (max-width: 400px) {
+  .touch-btn {
+    width: 52px;
+    height: 52px;
+  }
+  .touch-jump {
+    width: 66px;
+    height: 66px;
+  }
+  .touch-cluster {
+    gap: 8px;
+  }
+}
+
+/* Landscape phones: keep controls in corners, maximize height */
+@media (max-height: 420px) and (orientation: landscape) {
+  #brand, #hints { display: none; }
+  #stage {
+    max-height: 100dvh;
+    width: min(100%, calc(100dvh * 800 / 480));
+  }
+  .touch-btn {
+    width: 48px;
+    height: 48px;
+  }
+  .touch-jump {
+    width: 60px;
+    height: 60px;
+  }
 }

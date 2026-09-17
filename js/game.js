@@ -74,6 +74,98 @@
     for (const k of Object.keys(justPressed)) justPressed[k] = false;
   }
 
+  function setVirtualKey(id, down) {
+    if (!id) return;
+    if (down) {
+      if (!keys[id]) justPressed[id] = true;
+      keys[id] = true;
+    } else {
+      keys[id] = false;
+    }
+  }
+
+  // ---------- Touch / pointer on-screen controls ----------
+  (function setupTouchControls() {
+    const root = document.getElementById("touch-controls");
+    if (!root) return;
+
+    const activePointers = new Map(); // pointerId -> key id
+
+    function bindButton(btn) {
+      const keyId = btn.getAttribute("data-key");
+      if (!keyId) return;
+
+      const down = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        ensureAudio();
+        activePointers.set(e.pointerId, keyId);
+        setVirtualKey(keyId, true);
+        btn.classList.add("is-active");
+        try { btn.setPointerCapture(e.pointerId); } catch (_) {}
+      };
+      const up = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const id = activePointers.get(e.pointerId) || keyId;
+        activePointers.delete(e.pointerId);
+        // Only release if no other pointer still holding same key
+        let still = false;
+        for (const v of activePointers.values()) {
+          if (v === id) { still = true; break; }
+        }
+        if (!still) {
+          setVirtualKey(id, false);
+          btn.classList.remove("is-active");
+        }
+        try { btn.releasePointerCapture(e.pointerId); } catch (_) {}
+      };
+
+      btn.addEventListener("pointerdown", down);
+      btn.addEventListener("pointerup", up);
+      btn.addEventListener("pointercancel", up);
+      btn.addEventListener("lostpointercapture", (e) => {
+        const id = activePointers.get(e.pointerId);
+        if (!id) return;
+        activePointers.delete(e.pointerId);
+        let still = false;
+        for (const v of activePointers.values()) {
+          if (v === id) { still = true; break; }
+        }
+        if (!still) {
+          setVirtualKey(id, false);
+          btn.classList.remove("is-active");
+        }
+      });
+
+      // Block legacy touch scroll on buttons
+      btn.addEventListener("touchstart", (e) => e.preventDefault(), { passive: false });
+      btn.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
+    }
+
+    root.querySelectorAll(".touch-btn").forEach(bindButton);
+
+    // Prevent canvas page scroll / pinch zoom gestures
+    const stage = document.getElementById("stage") || canvas;
+    const block = (e) => { e.preventDefault(); };
+    stage.addEventListener("touchstart", block, { passive: false });
+    stage.addEventListener("touchmove", block, { passive: false });
+    canvas.addEventListener("touchstart", block, { passive: false });
+    canvas.addEventListener("touchmove", block, { passive: false });
+
+    // Tap canvas to start / continue / retry (menus)
+    canvas.addEventListener("pointerdown", (e) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      ensureAudio();
+      // Only inject menu confirm when not already using a touch button
+      if (state === STATE.START || state === STATE.WIN || state === STATE.OVER || state === STATE.PAUSE) {
+        setVirtualKey("space", true);
+        // Release next frame so it acts as a tap
+        requestAnimationFrame(() => setVirtualKey("space", false));
+      }
+    });
+  })();
+
   // ---------- Audio (simple beeps) ----------
   let audioCtx = null;
   function ensureAudio() {
@@ -642,9 +734,9 @@
     drawWorld();
     drawHUD();
 
-    if (state === STATE.PAUSE) drawOverlay("暂停", "按 P / Esc / 空格 继续");
-    if (state === STATE.WIN) drawOverlay("过关成功！", `得分 ${score}　按 空格 再玩一次`);
-    if (state === STATE.OVER) drawOverlay("游戏结束", `得分 ${score}　按 空格 重新开始`);
+    if (state === STATE.PAUSE) drawOverlay("暂停", "按 P / Esc / 空格 / 点「跳」继续");
+    if (state === STATE.WIN) drawOverlay("过关成功！", `得分 ${score}　按空格或点「跳」再玩`);
+    if (state === STATE.OVER) drawOverlay("游戏结束", `得分 ${score}　按空格或点「跳」重开`);
   }
 
   function drawStart() {
@@ -683,12 +775,12 @@
     ctx.fillStyle = "#fff";
     ctx.font = "18px sans-serif";
     const blink = Math.floor(Date.now() / 400) % 2 === 0;
-    if (blink) ctx.fillText("按 空格键 开始", W / 2, 280);
+    if (blink) ctx.fillText("按 空格 / 点击 / 点「跳」开始", W / 2, 280);
 
     ctx.font = "13px sans-serif";
     ctx.fillStyle = "#bdc3c7";
     ctx.fillText("收集金币 · 踩扁怪物 · 抵达终点旗帜", W / 2, 360);
-    ctx.fillText("←→ 移动　空格/↑ 跳跃　P 暂停", W / 2, 385);
+    ctx.fillText("键盘或屏幕按钮均可操作", W / 2, 385);
   }
 
   function drawWorld() {
