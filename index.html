@@ -19,23 +19,23 @@
   </div>
 
   <div id="game-wrap">
+    <!-- Left gutter: joystick outside the playfield -->
+    <aside id="rail-left" class="control-rail" aria-label="移动区域">
+      <div id="joystick" class="joystick">
+        <div class="joystick-base"></div>
+        <div id="joystick-knob" class="joystick-knob"></div>
+      </div>
+    </aside>
+
     <div id="stage">
       <canvas id="game" width="800" height="480"></canvas>
-
-      <div id="touch-controls" aria-hidden="false">
-        <!-- Virtual joystick: left thumb zone -->
-        <div id="joystick" class="joystick" aria-label="移动摇杆">
-          <div class="joystick-base"></div>
-          <div id="joystick-knob" class="joystick-knob"></div>
-        </div>
-
-        <!-- Pause: top-right -->
-        <button type="button" id="btn-pause" class="touch-pause" data-key="p" aria-label="暂停">Ⅱ</button>
-
-        <!-- Right-half jump zone (invisible hit area; logic in JS) -->
-        <div id="jump-zone" class="jump-zone" aria-label="跳跃区域"></div>
-      </div>
     </div>
+
+    <!-- Right gutter: jump zone + pause outside the playfield -->
+    <aside id="rail-right" class="control-rail" aria-label="跳跃与暂停">
+      <button type="button" id="btn-pause" class="touch-pause" data-key="p" aria-label="暂停">Ⅱ</button>
+      <div id="jump-zone" class="jump-zone" aria-label="跳跃区域"></div>
+    </aside>
   </div>
   <script src="js/game.js"></script>
 </body>
