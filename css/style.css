@@ -15,7 +15,6 @@ html, body {
   min-height: 100%;
   min-height: 100dvh;
   overflow: hidden;
-  /* Avoid pull-to-refresh / overscroll while playing */
   overscroll-behavior: none;
   -webkit-text-size-adjust: 100%;
   touch-action: manipulation;
@@ -25,10 +24,11 @@ html, body {
   text-align: center;
   padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
   width: 100%;
-  max-width: 960px;
+  max-width: 1100px;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 6px;
 }
 
@@ -53,8 +53,7 @@ html, body {
 #stage {
   position: relative;
   width: 100%;
-  max-width: min(800px, 100%);
-  /* Keep 800:480 aspect */
+  max-width: min(960px, 100%);
   aspect-ratio: 800 / 480;
   margin: 0 auto;
   touch-action: none;
@@ -99,6 +98,48 @@ html, body {
   display: none;
 }
 
+/* ---------- Rotate hint (portrait phones) ---------- */
+#rotate-hint {
+  display: none;
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto 4px;
+  pointer-events: none;
+}
+
+.rotate-card {
+  background: rgba(255, 217, 61, 0.12);
+  border: 1px solid rgba(255, 217, 61, 0.45);
+  color: #ffeaa7;
+  border-radius: 12px;
+  padding: 10px 14px;
+}
+
+.rotate-icon {
+  font-size: 1.6rem;
+  line-height: 1;
+  margin-bottom: 4px;
+  animation: spin-hint 2.4s linear infinite;
+}
+
+.rotate-card p {
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.rotate-sub {
+  margin-top: 2px;
+  font-size: 0.75rem !important;
+  font-weight: 500 !important;
+  opacity: 0.85;
+}
+
+@keyframes spin-hint {
+  0% { transform: rotate(0deg); }
+  20% { transform: rotate(90deg); }
+  100% { transform: rotate(90deg); }
+}
+
 /* ---------- On-screen touch controls ---------- */
 #touch-controls {
   display: none;
@@ -112,7 +153,7 @@ html, body {
   position: absolute;
   bottom: max(10px, env(safe-area-inset-bottom, 0px));
   display: flex;
-  gap: 12px;
+  gap: 14px;
   pointer-events: auto;
 }
 
@@ -122,6 +163,7 @@ html, body {
 
 .touch-action {
   right: max(10px, env(safe-area-inset-right, 0px));
+  flex-direction: column;
   align-items: flex-end;
 }
 
@@ -170,12 +212,11 @@ html, body {
 }
 
 .touch-pause {
-  width: 48px;
-  height: 48px;
-  font-size: 1rem;
+  width: 46px;
+  height: 46px;
+  font-size: 0.95rem;
   border-radius: 12px;
-  margin-bottom: 6px;
-  opacity: 0.85;
+  opacity: 0.9;
 }
 
 /* Show touch UI on phones / tablets / coarse pointers */
@@ -188,16 +229,120 @@ html, body {
   }
 }
 
-/* Compact phone layout: shrink chrome so playfield stays large */
-@media (max-width: 640px), (max-height: 520px) {
+/* ===== Landscape = primary mobile layout ===== */
+@media (orientation: landscape) {
+  #rotate-hint {
+    display: none !important;
+  }
+}
+
+@media (orientation: landscape) and (max-height: 560px),
+       (orientation: landscape) and (hover: none),
+       (orientation: landscape) and (pointer: coarse) {
   body {
     align-items: stretch;
   }
 
   #game-wrap {
-    padding: 4px 4px calc(4px + env(safe-area-inset-bottom, 0px));
+    max-width: none;
+    width: 100%;
+    height: 100dvh;
     min-height: 100dvh;
+    padding:
+      max(2px, env(safe-area-inset-top, 0px))
+      max(4px, env(safe-area-inset-right, 0px))
+      max(2px, env(safe-area-inset-bottom, 0px))
+      max(4px, env(safe-area-inset-left, 0px));
+    gap: 0;
     justify-content: center;
+  }
+
+  #brand,
+  #hints {
+    display: none;
+  }
+
+  #stage {
+    /* Fill landscape viewport while keeping 5:3 playfield */
+    width: min(
+      100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 8px,
+      calc((100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 4px) * 800 / 480)
+    );
+    max-width: none;
+    height: auto;
+    max-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 4px);
+    aspect-ratio: 800 / 480;
+  }
+
+  #game {
+    border-width: 2px;
+  }
+
+  /* Thumb-friendly landscape controls in corners */
+  .touch-cluster {
+    bottom: max(8px, env(safe-area-inset-bottom, 0px));
+    gap: 12px;
+  }
+
+  .touch-move {
+    left: max(8px, env(safe-area-inset-left, 0px));
+  }
+
+  .touch-action {
+    right: max(8px, env(safe-area-inset-right, 0px));
+  }
+
+  .touch-btn {
+    width: clamp(48px, 9vh, 64px);
+    height: clamp(48px, 9vh, 64px);
+    font-size: clamp(1.05rem, 3.2vh, 1.35rem);
+    border-radius: 14px;
+    background: rgba(20, 24, 40, 0.38);
+  }
+
+  .touch-jump {
+    width: clamp(60px, 12vh, 80px);
+    height: clamp(60px, 12vh, 80px);
+    font-size: clamp(1.2rem, 3.6vh, 1.5rem);
+  }
+
+  .touch-pause {
+    width: clamp(40px, 7vh, 48px);
+    height: clamp(40px, 7vh, 48px);
+    font-size: 0.9rem;
+  }
+}
+
+/* Short landscape phones */
+@media (orientation: landscape) and (max-height: 400px) {
+  .touch-btn {
+    width: 46px;
+    height: 46px;
+  }
+  .touch-jump {
+    width: 58px;
+    height: 58px;
+  }
+  .touch-pause {
+    width: 38px;
+    height: 38px;
+  }
+  .touch-cluster {
+    gap: 8px;
+  }
+}
+
+/* ===== Portrait: still playable + rotate prompt ===== */
+@media (orientation: portrait) and (max-width: 900px) {
+  #rotate-hint {
+    display: block;
+  }
+
+  #game-wrap {
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px));
+    min-height: 100dvh;
+    justify-content: flex-start;
+    padding-top: max(8px, env(safe-area-inset-top, 0px));
   }
 
   #brand {
@@ -210,54 +355,24 @@ html, body {
 
   #stage {
     max-width: 100%;
-    max-height: calc(100dvh - 8px);
-    width: min(100%, calc((100dvh - 8px) * 800 / 480));
+    width: min(100%, calc((100dvh - 88px) * 800 / 480));
+    max-height: calc(100dvh - 88px);
   }
 
   .touch-btn {
-    width: 58px;
-    height: 58px;
-    font-size: 1.2rem;
+    width: 56px;
+    height: 56px;
   }
 
   .touch-jump {
-    width: 72px;
-    height: 72px;
-  }
-
-  .touch-pause {
-    width: 44px;
-    height: 44px;
+    width: 70px;
+    height: 70px;
   }
 }
 
-@media (max-width: 400px) {
-  .touch-btn {
-    width: 52px;
-    height: 52px;
-  }
-  .touch-jump {
-    width: 66px;
-    height: 66px;
-  }
-  .touch-cluster {
-    gap: 8px;
-  }
-}
-
-/* Landscape phones: keep controls in corners, maximize height */
-@media (max-height: 420px) and (orientation: landscape) {
-  #brand, #hints { display: none; }
-  #stage {
-    max-height: 100dvh;
-    width: min(100%, calc(100dvh * 800 / 480));
-  }
-  .touch-btn {
-    width: 48px;
-    height: 48px;
-  }
-  .touch-jump {
-    width: 60px;
-    height: 60px;
+/* Desktop large */
+@media (min-width: 901px) and (hover: hover) {
+  #rotate-hint {
+    display: none !important;
   }
 }

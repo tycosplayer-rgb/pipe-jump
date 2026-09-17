@@ -42,6 +42,7 @@
     if (["arrowup", "arrowdown", "arrowleft", "arrowright", " ", "w", "a", "s", "d", "p", "escape"].includes(k) || e.code === "Space") {
       e.preventDefault();
     }
+    unlockAudio();
     const id = normalizeKey(e);
     if (!keys[id]) justPressed[id] = true;
     keys[id] = true;
@@ -98,7 +99,7 @@
       const down = (e) => {
         e.preventDefault();
         e.stopPropagation();
-        ensureAudio();
+        unlockAudio();
         activePointers.set(e.pointerId, keyId);
         setVirtualKey(keyId, true);
         btn.classList.add("is-active");
@@ -156,7 +157,7 @@
     // Tap canvas to start / continue / retry (menus)
     canvas.addEventListener("pointerdown", (e) => {
       if (e.pointerType === "mouse" && e.button !== 0) return;
-      ensureAudio();
+      unlockAudio();
       // Only inject menu confirm when not already using a touch button
       if (state === STATE.START || state === STATE.WIN || state === STATE.OVER || state === STATE.PAUSE) {
         setVirtualKey("space", true);
@@ -166,53 +167,152 @@
     });
   })();
 
-  // ---------- Audio (simple beeps) ----------
+  // ---------- Audio (low-latency Web Audio) ----------
+  // Single shared AudioContext + pre-rendered buffers. No setTimeout chaining,
+  // no HTMLAudioElement, no remote files. Unlock once on first user gesture.
   let audioCtx = null;
-  function ensureAudio() {
-    if (!audioCtx) {
-      try {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      } catch (_) {
-        audioCtx = null;
+  let masterGain = null;
+  let audioUnlocked = false;
+  const sfxBuffers = Object.create(null);
+
+  function makeToneBuffer(freq, dur, type, peak) {
+    const sr = audioCtx.sampleRate;
+    const n = Math.max(1, Math.floor(sr * dur));
+    const buf = audioCtx.createBuffer(1, n, sr);
+    const data = buf.getChannelData(0);
+    const amp = peak ?? 0.22;
+    for (let i = 0; i < n; i++) {
+      const t = i / sr;
+      // Fast attack + exponential release for snappy SFX
+      const attack = Math.min(1, t / 0.004);
+      const release = Math.exp(-4.5 * (t / dur));
+      const env = attack * release;
+      const ph = 2 * Math.PI * freq * t;
+      let s;
+      if (type === "square") s = Math.sin(ph) >= 0 ? 1 : -1;
+      else if (type === "triangle") {
+        const p = (t * freq) % 1;
+        s = p < 0.5 ? p * 4 - 1 : 3 - p * 4;
+      } else if (type === "sawtooth") {
+        s = 2 * ((t * freq) % 1) - 1;
+      } else {
+        s = Math.sin(ph);
       }
+      data[i] = s * env * amp;
     }
-    if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+    return buf;
   }
 
-  function beep(freq, dur, type, vol) {
+  function makeSequenceBuffer(notes) {
+    // notes: [{freq, dur, type, peak, gap}] scheduled back-to-back into one buffer
+    const sr = audioCtx.sampleRate;
+    let total = 0;
+    for (const n of notes) total += n.dur + (n.gap || 0);
+    const len = Math.max(1, Math.floor(sr * total) + 1);
+    const buf = audioCtx.createBuffer(1, len, sr);
+    const data = buf.getChannelData(0);
+    let cursor = 0;
+    for (const n of notes) {
+      const tone = makeToneBuffer(n.freq, n.dur, n.type || "square", n.peak ?? 0.2);
+      const td = tone.getChannelData(0);
+      const start = Math.floor(cursor * sr);
+      for (let i = 0; i < td.length && start + i < len; i++) {
+        data[start + i] += td[i];
+      }
+      cursor += n.dur + (n.gap || 0);
+    }
+    // Soft clip
+    for (let i = 0; i < len; i++) {
+      const v = data[i];
+      data[i] = v < -1 ? -1 : v > 1 ? 1 : v;
+    }
+    return buf;
+  }
+
+  function initAudioGraph() {
+    if (audioCtx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    try {
+      audioCtx = new AC({ latencyHint: "interactive" });
+    } catch (_) {
+      try { audioCtx = new AC(); } catch (__) { audioCtx = null; return; }
+    }
+    masterGain = audioCtx.createGain();
+    masterGain.gain.value = 0.55;
+    masterGain.connect(audioCtx.destination);
+
+    sfxBuffers.jump = makeToneBuffer(460, 0.07, "square", 0.2);
+    sfxBuffers.coin = makeSequenceBuffer([
+      { freq: 880, dur: 0.05, type: "square", peak: 0.18, gap: 0.02 },
+      { freq: 1175, dur: 0.08, type: "square", peak: 0.18 },
+    ]);
+    sfxBuffers.stomp = makeToneBuffer(170, 0.1, "triangle", 0.28);
+    sfxBuffers.hit = makeToneBuffer(110, 0.18, "sawtooth", 0.22);
+    sfxBuffers.die = makeSequenceBuffer([
+      { freq: 300, dur: 0.1, type: "sawtooth", peak: 0.22, gap: 0.02 },
+      { freq: 200, dur: 0.12, type: "sawtooth", peak: 0.2, gap: 0.02 },
+      { freq: 100, dur: 0.22, type: "sawtooth", peak: 0.22 },
+    ]);
+    sfxBuffers.win = makeSequenceBuffer([
+      { freq: 523, dur: 0.1, type: "square", peak: 0.16, gap: 0.03 },
+      { freq: 659, dur: 0.1, type: "square", peak: 0.16, gap: 0.03 },
+      { freq: 784, dur: 0.1, type: "square", peak: 0.16, gap: 0.03 },
+      { freq: 1046, dur: 0.16, type: "square", peak: 0.18 },
+    ]);
+    sfxBuffers.pause = makeToneBuffer(330, 0.05, "sine", 0.14);
+    sfxBuffers.block = makeToneBuffer(250, 0.04, "triangle", 0.16);
+  }
+
+  function unlockAudio() {
+    initAudioGraph();
     if (!audioCtx) return;
+    if (audioCtx.state === "suspended") {
+      audioCtx.resume().catch(() => {});
+    }
+    if (!audioUnlocked) {
+      // iOS / autoplay policy: play a tiny silent buffer inside the gesture
+      try {
+        const silent = audioCtx.createBuffer(1, 1, audioCtx.sampleRate);
+        const src = audioCtx.createBufferSource();
+        src.buffer = silent;
+        src.connect(masterGain);
+        src.start(0);
+      } catch (_) {}
+      audioUnlocked = true;
+    }
+  }
+
+  function playSfx(name) {
+    if (!audioCtx || !masterGain) return;
+    const buf = sfxBuffers[name];
+    if (!buf) return;
+    if (audioCtx.state === "suspended") {
+      audioCtx.resume().catch(() => {});
+    }
     const t0 = audioCtx.currentTime;
-    const o = audioCtx.createOscillator();
-    const g = audioCtx.createGain();
-    o.type = type || "square";
-    o.frequency.value = freq;
-    g.gain.setValueAtTime(vol ?? 0.08, t0);
-    g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
-    o.connect(g);
-    g.connect(audioCtx.destination);
-    o.start(t0);
-    o.stop(t0 + dur + 0.02);
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+    src.connect(masterGain);
+    // Tiny lookahead keeps scheduling stable without audible delay
+    src.start(t0);
   }
 
   const SFX = {
-    jump: () => beep(420, 0.08, "square", 0.07),
-    coin: () => {
-      beep(880, 0.06, "square", 0.07);
-      setTimeout(() => beep(1175, 0.1, "square", 0.07), 60);
-    },
-    stomp: () => beep(180, 0.12, "triangle", 0.1),
-    hit: () => beep(120, 0.25, "sawtooth", 0.09),
-    die: () => {
-      beep(300, 0.15, "sawtooth", 0.1);
-      setTimeout(() => beep(200, 0.2, "sawtooth", 0.1), 120);
-      setTimeout(() => beep(100, 0.35, "sawtooth", 0.1), 280);
-    },
-    win: () => {
-      [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => beep(f, 0.18, "square", 0.08), i * 140));
-    },
-    pause: () => beep(330, 0.06, "sine", 0.05),
-    block: () => beep(260, 0.05, "triangle", 0.06),
+    jump: () => playSfx("jump"),
+    coin: () => playSfx("coin"),
+    stomp: () => playSfx("stomp"),
+    hit: () => playSfx("hit"),
+    die: () => playSfx("die"),
+    win: () => playSfx("win"),
+    pause: () => playSfx("pause"),
+    block: () => playSfx("block"),
   };
+
+  // Global one-time unlock on first pointer/touch/click anywhere
+  ["pointerdown", "touchstart", "click"].forEach((ev) => {
+    window.addEventListener(ev, () => unlockAudio(), { once: false, passive: true, capture: true });
+  });
 
   // ---------- Level data ----------
   // Legend:
@@ -410,7 +510,7 @@
   }
 
   function startGame() {
-    ensureAudio();
+    unlockAudio();
     level = buildLevel();
     score = 0;
     coinsGot = 0;

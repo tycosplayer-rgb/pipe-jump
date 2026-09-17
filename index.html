@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="screen-orientation" content="landscape" />
   <meta name="theme-color" content="#1a1a2e" />
   <title>水管工大冒险 · Pipe Jump</title>
   <link rel="stylesheet" href="css/style.css" />
@@ -15,6 +16,14 @@
       <h1 id="title">水管工大冒险</h1>
       <p id="subtitle">Pipe Jump</p>
     </header>
+
+    <div id="rotate-hint" role="status">
+      <div class="rotate-card">
+        <div class="rotate-icon" aria-hidden="true">⟳</div>
+        <p>请将手机横过来游玩</p>
+        <p class="rotate-sub">横屏体验更佳 · 也可竖屏继续</p>
+      </div>
+    </div>
 
     <div id="stage">
       <canvas id="game" width="800" height="480"></canvas>
@@ -35,7 +44,7 @@
       <span>←→ / A D 移动</span>
       <span>↑ / W / 空格 跳跃</span>
       <span>P / Esc 暂停</span>
-      <span class="hint-touch">手机：左下移动 · 右下跳跃</span>
+      <span class="hint-touch">推荐横屏 · 左下移动 · 右下跳跃</span>
     </div>
   </div>
   <script src="js/game.js"></script>
